@@ -7,10 +7,11 @@
      (println "dbg:" '~body "=" x#)
      x#))
 
-(def word-list-url "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0039/english.txt")
-
-
 (def sha-256 (MessageDigest/getInstance "SHA-256"))
+
+(defn calc-sha-256 [data]
+  (.reset sha-256)
+  (.digest sha-256 data))
 
 (def zero-bit (constantly "0"))
 
@@ -20,24 +21,26 @@
   (apply str (map (comp (partial pad-bits 8) #(Integer/toBinaryString (bit-and 0xff %))) ba)))
 
 (defn ba->hex-str [ba]
-  (apply str (map #(Integer/toHexString (bit-and 0xff %)) ba))) 
+  (apply str (map (comp (partial pad-bits 2) #(Integer/toHexString (bit-and 0xff %))) ba))) 
 
-(defn calc-sha-256 [data]
-  (.reset sha-256)
-  (.digest sha-256 data))
+(def word-list-url "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0039/english.txt")
 
-(def word-list 
-  (let [con (.openConnection (URL. word-list-url))
+(defn url-get [url]
+  (let [con (.openConnection (URL. url))
         _ (.setRequestMethod con "GET")
-        in (.getInputStream con)]
-    (vec (.split (slurp in) "\n"))
-    )
-  )
+        in (.getInputStream con)
+        ]
+    (try
+      (slurp in)
+      (finally (.close in)))))
 
-(def word->index-map 
+(defonce word-list (vec (.split (url-get word-list-url) "\n")))
+
+(defonce word->index-map 
   (into {} (map-indexed (fn [i v] [v i]) word-list)))
 
 (def cs-mod 32)
+(def nr-of-bits-in-group 11)
 
 (defn correct-bits? [n]
   (when 
@@ -51,20 +54,29 @@
   (let [hash-bits (int (- (Math/pow 2 cs) 1))]
     (bit-and (.longValue (BigInteger. (calc-sha-256 entropy-ba))) hash-bits)))
    
+
+
+(defn hex-str->ba [hex-str]
+  (if (instance? String hex-str)
+    (->> hex-str
+      (partition-all 2)
+      (map (comp #(Integer/decode %) (partial str "0x") (partial apply str)))
+      byte-array
+      )
+    
+    hex-str))
   
 
-(defn entropy->mnemonic [entropy-ba]
-  (let [nr-of-bits (* (count entropy-ba) 8)
+(defn entropy->mnemonic [entropy]
+  (let [entropy (hex-str->ba entropy)
+        nr-of-bits (* (count entropy) 8)
         _ (correct-bits? nr-of-bits)
         cs (/ nr-of-bits cs-mod)
-        hash-bits (int (- (Math/pow 2 cs) 1))
-        hash (byte (calc-hash entropy-ba cs))]
-    (ba->bin-str (concat entropy-ba [hash]))
-  ))
-
-
-(defn binary->hex [bin-str]
-  )
+        hash (calc-hash entropy cs)]
+    (->> 
+      (str (ba->bin-str entropy) (pad-bits cs (Integer/toBinaryString hash))) 
+      (partition-all nr-of-bits-in-group)
+      (map (comp (partial nth word-list) #(Integer/parseInt % 2) (partial apply str))))))
 
 
 (def bin->hex-map {"0000" "0", "0001" "1", "0010" "2", "0011", "3"
@@ -72,12 +84,5 @@
                    "1000" "8", "1001" "9", "1010" "a", "1011", "b"
                    "1100" "c", "1101" "d", "1110" "e", "1111", "f"})
 
-(defn passphrase->pk [words] 
-  (->> 
-    (map (comp (partial pad-bits 11) #(Integer/toBinaryString %) word->index-map) words) 
-    (apply str)
-    (partition-all 4)
-    (map (partial apply str))
-    (map bin->hex-map)
-    (apply str)))
+
   
