@@ -5,8 +5,6 @@
             [clojure.data.json :as json]))
 
 
-
-
 (defonce test-vectors (get (->> "https://raw.githubusercontent.com/trezor/python-mnemonic/master/vectors.json" url-get json/read-str) "english")) 
 
 (defn verify-test-vector [[entropy mnemonic seed pk]]
