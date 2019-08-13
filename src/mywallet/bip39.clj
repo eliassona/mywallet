@@ -51,8 +51,7 @@
 
 
 (defn calc-hash [entropy-ba cs]
-  (let [hash-bits (int (- (Math/pow 2 cs) 1))]
-    (bit-and (.longValue (BigInteger. (calc-sha-256 entropy-ba))) hash-bits)))
+  (bit-shift-right (bit-and 0xff (first (calc-sha-256 entropy-ba))) (- 8 cs)))
    
 
 
