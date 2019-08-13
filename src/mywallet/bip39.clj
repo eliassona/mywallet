@@ -1,6 +1,9 @@
 (ns mywallet.bip39
   (:import [java.net HttpURLConnection URL]
-           [java.security MessageDigest])
+           [java.security MessageDigest]
+           [javax.crypto SecretKeyFactory]
+           [javax.crypto.spec PBEKeySpec]
+           [java.text Normalizer Normalizer$Form])
   )
 (defmacro dbg [body]
   `(let [x# ~body]
@@ -85,3 +88,22 @@
 
 
   
+;protected Cipher cipherOf(final int mode, final String passPhrase) throws Exception {
+;        final SecretKeyFactory factory = SecretKeyFactory.getInstance(PBKDF2WithHmacSHA256);
+;		final KeySpec spec = new PBEKeySpec(passPhrase.toCharArray(), salt, iterationCount, keyStrength);
+;		final SecretKey tmp = factory.generateSecret(spec);
+;        final SecretKey key = new SecretKeySpec(tmp.getEncoded(), "AES");
+;        final Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+;        cipher.init(mode,  key, new IvParameterSpec(IV));
+;		return cipher;
+;	}
+
+
+(defn normalize [s] (Normalizer/normalize s, Normalizer$Form/NFKD))
+
+(defn pbkdf2-cipher [mnemonics salt]
+  (let [spec (PBEKeySpec. (.toCharArray (normalize mnemonics)) (.getBytes (str "mnemonic" (normalize salt)) "UTF-8") 2048 512)
+        skf  (SecretKeyFactory/getInstance "PBKDF2WithHmacSHA512")] 
+        (ba->hex-str (.getEncoded (.generateSecret skf spec)))))
+
+

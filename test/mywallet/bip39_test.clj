@@ -28,7 +28,11 @@
 
 (defonce test-vectors (get (->> "https://raw.githubusercontent.com/trezor/python-mnemonic/master/vectors.json" url-get json/read-str) "english")) 
 
-(defn verify-test-vector [[entropy mnemonic seed pk]] (is (= mnemonic (clojure.string/join " " (entropy->mnemonic entropy)))))
+(defn verify-test-vector [[entropy mnemonic seed pk]]
+  (let [mnemonics-list (entropy->mnemonic entropy)
+        actual-mnemonics (clojure.string/join " " mnemonics-list)]
+    (is (= mnemonic actual-mnemonics))
+    (is (= seed (pbkdf2-cipher actual-mnemonics "TREZOR")))))
 
 (deftest verify-test-vectors 
   (doseq [tv test-vectors]
