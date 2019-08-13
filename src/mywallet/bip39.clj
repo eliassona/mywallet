@@ -1,43 +1,21 @@
 (ns mywallet.bip39
+  (:require [mywallet.core :refer :all])
   (:import [java.net HttpURLConnection URL]
            [java.security MessageDigest]
            [javax.crypto SecretKeyFactory]
            [javax.crypto.spec PBEKeySpec]
-           [java.text Normalizer Normalizer$Form])
-  )
-(defmacro dbg [body]
-  `(let [x# ~body]
-     (println "dbg:" '~body "=" x#)
-     x#))
+           [java.text Normalizer Normalizer$Form]))
 
-(def sha-256 (MessageDigest/getInstance "SHA-256"))
+(defn calc-word-list-hash []
+  (ba->hex-str (calc-sha-256 (.getBytes (apply str word-list) "UTF-8"))))
 
-(defn calc-sha-256 [data]
-  (.reset sha-256)
-  (.digest sha-256 data))
+(def word-list-hash "ad90bf3beb7b0eb7e5acd74727dc0da96e0a280a258354e7293fb7e211ac03db")
 
-(def zero-bit (constantly "0"))
+(defonce word-list (vec (.split (url-get "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0039/english.txt") "\n")))
 
-(defn pad-bits [n bit-str] (str (apply str (map zero-bit (range (- n (count bit-str))))) bit-str))
-
-(defn ba->bin-str [ba]
-  (apply str (map (comp (partial pad-bits 8) #(Integer/toBinaryString (bit-and 0xff %))) ba)))
-
-(defn ba->hex-str [ba]
-  (apply str (map (comp (partial pad-bits 2) #(Integer/toHexString (bit-and 0xff %))) ba))) 
-
-(def word-list-url "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0039/english.txt")
-
-(defn url-get [url]
-  (let [con (.openConnection (URL. url))
-        _ (.setRequestMethod con "GET")
-        in (.getInputStream con)
-        ]
-    (try
-      (slurp in)
-      (finally (.close in)))))
-
-(defonce word-list (vec (.split (url-get word-list-url) "\n")))
+(when 
+  (not= word-list-hash (calc-word-list-hash))
+  (throw (IllegalStateException. "word list has changed, DANGER!!!!!")))
 
 (defonce word->index-map 
   (into {} (map-indexed (fn [i v] [v i]) word-list)))
@@ -52,23 +30,9 @@
       (not= (mod n cs-mod) 0))
     (throw (IllegalArgumentException. "Incorrect number of bits"))))
 
-
 (defn calc-hash [entropy-ba cs]
   (bit-shift-right (bit-and 0xff (first (calc-sha-256 entropy-ba))) (- 8 cs)))
-   
-
-
-(defn hex-str->ba [hex-str]
-  (if (instance? String hex-str)
-    (->> hex-str
-      (partition-all 2)
-      (map (comp #(Integer/decode %) (partial str "0x") (partial apply str)))
-      byte-array
-      )
-    
-    hex-str))
   
-
 (defn entropy->mnemonic [entropy]
   (let [entropy (hex-str->ba entropy)
         nr-of-bits (* (count entropy) 8)
@@ -80,29 +44,13 @@
       (partition-all nr-of-bits-in-group)
       (map (comp (partial nth word-list) #(Integer/parseInt % 2) (partial apply str))))))
 
-
-(def bin->hex-map {"0000" "0", "0001" "1", "0010" "2", "0011", "3"
-                   "0100" "4", "0101" "5", "0110" "6", "0111", "7"
-                   "1000" "8", "1001" "9", "1010" "a", "1011", "b"
-                   "1100" "c", "1101" "d", "1110" "e", "1111", "f"})
-
-
-  
-;protected Cipher cipherOf(final int mode, final String passPhrase) throws Exception {
-;        final SecretKeyFactory factory = SecretKeyFactory.getInstance(PBKDF2WithHmacSHA256);
-;		final KeySpec spec = new PBEKeySpec(passPhrase.toCharArray(), salt, iterationCount, keyStrength);
-;		final SecretKey tmp = factory.generateSecret(spec);
-;        final SecretKey key = new SecretKeySpec(tmp.getEncoded(), "AES");
-;        final Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
-;        cipher.init(mode,  key, new IvParameterSpec(IV));
-;		return cipher;
-;	}
-
-
 (defn normalize [s] (Normalizer/normalize s, Normalizer$Form/NFKD))
 
-(defn pbkdf2-cipher [mnemonics salt]
-  (let [spec (PBEKeySpec. (.toCharArray (normalize mnemonics)) (.getBytes (str "mnemonic" (normalize salt)) "UTF-8") 2048 512)
+(def iterations 2048)
+(def derivation-seed-bitsize 512)
+
+(defn mnemonic->seed [mnemonics salt]
+  (let [spec (PBEKeySpec. (.toCharArray (normalize mnemonics)) (.getBytes (str "mnemonic" (normalize salt)) "UTF-8") iterations derivation-seed-bitsize)
         skf  (SecretKeyFactory/getInstance "PBKDF2WithHmacSHA512")] 
         (ba->hex-str (.getEncoded (.generateSecret skf spec)))))
 
