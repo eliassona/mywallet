@@ -1,3 +1,0 @@
-(ns mywallet.bip32
-  
-)
