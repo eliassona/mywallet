@@ -4,6 +4,19 @@
             [mywallet.bip32 :refer :all]
             ))
 
+(deftest verify-ba-copy-range
+  (is (= [3 4] (vec (ba-copy-range (byte-array [1 2 3 4]) 2 2))))
+  (is (= [1 2] (vec (ba-copy-range (byte-array [1 2 3 4]) 0 2))))
+  (is (= [2 3] (vec (ba-copy-range (byte-array [1 2 3 4]) 1 2)))))
+              
+
+(deftest verify-child-public-key-derivation
+  (let [m (derive-master-key-pair (byte-array 256))
+        prv-child (derive-child-key-pair m 0)
+        pub-child (derive-public-child-key (:pub m) (:chain m) 0)]
+    (is (= (BigInteger. (:pub prv-child)) (BigInteger. (:pub pub-child))))))
+
+
 (def test-vectors
   [
    ["000102030405060708090a0b0c0d0e0f"

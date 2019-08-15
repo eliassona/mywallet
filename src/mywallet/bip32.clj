@@ -4,7 +4,8 @@
   (:import [javax.crypto Mac]
            [javax.crypto.spec SecretKeySpec]
            [org.bouncycastle.asn1.sec SECNamedCurves]
-           [org.bouncycastle.crypto.params ECDomainParameters] 
+           [org.bouncycastle.crypto.params ECDomainParameters]
+           [org.bouncycastle.crypto.digests RIPEMD160Digest]
            [org.bouncycastle.math.ec ECPoint$Fp]))
 
 (def bitcoin-seed (.getBytes "Bitcoin seed"))
@@ -32,25 +33,39 @@
   (let [q (-> curve .getG (.multiply prv-key))]
     (.getEncoded (ECPoint$Fp. (.getCurve domain) (.getX q) (.getY q) true))))
 
-(defn master-key-pair-of [p]
-  (let [prv-key (.mod (BigInteger. 1, p) (.getN curve ))]
-    {:prv prv-key
-     :pub (pub-key-of prv-key)}))
+(defn master-key-pair-of [lr]
+  (let [l (:l lr)]
+    {:prv l
+     :pub (pub-key-of (.mod (BigInteger. 1, l) (.getN curve )))
+     :chain (:r lr)}))
   
 
-(defn master-keypair-of [seed]
-  (let [
-        seedkey (SecretKeySpec. bitcoin-seed "HmacSHA512")
-        _ (.init mac seedkey)
-        lr (.doFinal mac seed)
-        _ (-> lr vec count dbg)
-        l (ba-copy-range lr 0 32)
-        r (ba-copy-range lr 32 32)
-        _  (check-master-key (BigInteger. 1, l))
-        ]
-    (master-key-pair-of l)
-   ))
+(defn mac-sha-512 [ba]
+  (let [seed-key (SecretKeySpec. bitcoin-seed "HmacSHA512")]
+    (.init mac seed-key)
+    (.doFinal mac ba)))
 
-(defn child-key-of [extended-key]
-  )
+(defn split-l-r [ba]
+  {:l (ba-copy-range ba 0 32)
+   :r (ba-copy-range ba 32 32)})
+  
+
+(defn derive-master-key-pair [seed]
+  (let [lr (-> seed mac-sha-512 split-l-r)
+        _  (check-master-key (BigInteger. 1, (:l lr)))]
+    (master-key-pair-of lr)))
+
+(defn ser-32 [v]
+  (reverse (map (fn [i] (bit-and (bit-shift-right v (* 8 i)) 0xff)) (range 4))))
+
+(defn derive-child-key-pair [parent-key-pair index]
+  (let [lr (split-l-r (mac-sha-512 (byte-array (concat (:pub parent-key-pair)  (:chain parent-key-pair) (ser-32 index)))))
+        child-private-key (.add (BigInteger. (:prv parent-key-pair)) (BigInteger. (:l lr)))
+        child-public-key (pub-key-of child-private-key)]
+    {:pub child-public-key, :prv child-private-key, :chain (:r lr)}))
+
+
+(defn derive-public-child-key [parent-pub-key parent-chain-code index]
+  (let [lr (split-l-r (mac-sha-512 (byte-array (concat parent-pub-key  parent-chain-code (ser-32 index)))))]
+    {:pub (.toByteArray (.add (BigInteger. parent-pub-key) (BigInteger. (pub-key-of (BigInteger. (:l lr)))))), :chain (:r lr)}))
 
