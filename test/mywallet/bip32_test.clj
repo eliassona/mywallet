@@ -11,10 +11,10 @@
               
 
 (deftest verify-child-public-key-derivation
-  (let [m (derive-master-key-pair (byte-array 256))
+  (let [m (derive-master-key-pair (byte-array 32))
         prv-child (derive-child-key-pair m 0)
         pub-child (derive-public-child-key (:pub m) (:chain m) 0)]
-    (is (= (BigInteger. (:pub prv-child)) (BigInteger. (:pub pub-child))))))
+    (is (= (BigInteger. 1 (:pub prv-child)) (BigInteger. 1 (:pub pub-child))))))
 
 
 (def test-vectors
@@ -72,7 +72,7 @@
   )
 
 (defn verify-chaincode [seed [chain ext-pub ext-prv]]
-  (let [mkp (master-keypair-of seed)]
+  (let [mkp (derive-master-key-pair seed)]
     (is (= [ext-pub ext-prv] (prv-pub-key-of mkp chain))))
   )
 

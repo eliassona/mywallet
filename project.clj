@@ -6,7 +6,6 @@
   :java-source-paths ["java/src"]
   :dependencies [[org.clojure/clojure "1.8.0"]
                  [org.clojure/data.json "0.2.6"]
-                 [org.bouncycastle/bcprov-jdk16 "1.44"]
-
-
+                 [org.bouncycastle/bcpkix-jdk15on "1.52"]
+                 [org.bouncycastle/bcprov-jdk15on "1.52"]
                  ])
