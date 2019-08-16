@@ -85,7 +85,11 @@
   (reverse (map (fn [i] (bit-and (bit-shift-right v (* 8 i)) 0xff)) (range 4))))
 
 (defn derive-child-key-pair [parent-key-pair index]
-  (let [lr (split-l-r (mac-sha-512 (byte-array (concat (:pub parent-key-pair)  (ser-32 index))) (:chain parent-key-pair)))
+  (let [mac-fn (partial mac-sha-512 (:chain parent-key-pair))
+        lr (-> (concat (:pub parent-key-pair) (ser-32 index))  
+                byte-array 
+                mac-fn 
+                split-l-r)
         child-private-key (.mod (.add (BigInteger. 1 (:prv parent-key-pair)) (BigInteger. 1 (:l lr))) (.getN curve))
         child-public-key (pub-key-of child-private-key)]
     {:pub child-public-key, :prv (.toByteArray child-private-key), :chain (:r lr)}))
@@ -117,19 +121,18 @@
         (if (private? version) [0] [])
         key-bytes))))
 
-(defn fp-kp-of [kp]
-  {:prv (-> kp :prv extended-key-hash-of), :pub (-> kp :pub extended-key-hash-of)})
+(defn fp-kp-of [kp] (-> kp :pub extended-key-hash-of))
 
 (defn extended-key-pair-of 
   ([seed path]
     (let [root-fp (byte-array [0 0 0 0])]
-      (extended-key-pair-of (derive-master-key-pair (hex-str->ba seed)) 0 0 (.split path "/") {:prv root-fp, :pub root-fp})))
+      (extended-key-pair-of (derive-master-key-pair (hex-str->ba seed)) 0 0 (.split path "/") root-fp)))
   ([kp depth index path fp]
     (let [net (:mainnet version-map)] 
-      (if (= depth (dec (count path)))
-        (let [ext-fn (fn [k] (extend-key-format-of (k net) depth (k fp) index (:chain kp) (k kp)))]
+      (if (>= depth (dec (count path)))
+        (let [ext-fn (fn [k] (extend-key-format-of (k net) depth fp index (:chain kp) (k kp)))]
           (into {} (map (fn [k] [k (ext-fn k)]) [:prv :pub])))
         (let [depth (inc depth)
-              index (dbg (Integer/decode (nth path depth)))]
+              index (Integer/decode (nth path depth))]
           (extended-key-pair-of 
             (derive-child-key-pair kp index) depth index path (fp-kp-of kp)))))))
