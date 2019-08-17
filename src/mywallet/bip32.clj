@@ -20,6 +20,8 @@
 
 (def version-map {:mainnet {:pub 0x0488B21E, :prv 0x0488ADE4}, :testnet {:pub 0x043587CF, :prv 0x04358394}}) 
 
+(def hardened-child 0x80000000)
+
 (defn private? [version]
   (or 
     (= (-> version-map :mainnet :prv) version)
@@ -156,17 +158,22 @@
     
   )
 
+
+(defn point-ser [k]
+  (.getEncoded (.multiply (.getG curve) k) true))
+
+(defn hardened-child-concat [k i]
+  (byte-array (concat [0] k (ser-32 i))))
+
+(defn normal-child-concat [k i]
+  (byte-array (concat (point-ser (BigInteger. 1 k)) (ser-32 i))))
+
+
+(defn CKDpriv [k c i]
+    (split-l-r 
+      (mac-sha-512 
+       (if (>= i hardened-child) 
+         (hardened-child-concat k i)
+         (normal-child-concat k i))
+       c)))
   
-
-
-
-
-(defn ref-impl [seed]
-  (.derive 
-    (ExtendedKey. (:prv
-                    (derive-master-key-pair 
-                      (hex-str->ba 
-                        seed
-                        )
-                     ))) 0))
-
