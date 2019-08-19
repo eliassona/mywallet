@@ -46,7 +46,7 @@ The generated seed from BIP-39 can be used to derive deterministic keys accordin
 
 
 ```
-
+Hardened keys are not supported yet.
 
 
 FIXME
