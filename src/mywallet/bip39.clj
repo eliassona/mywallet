@@ -1,6 +1,7 @@
 (ns ^{:doc "Implementation of BIP39. https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki"} 
     mywallet.bip39
-  (:require [mywallet.core :refer :all])
+  (:require [mywallet.core :refer :all]
+            [clojure.string :refer [join]])
   (:import [java.net HttpURLConnection URL]
            [java.security MessageDigest]
            [javax.crypto SecretKeyFactory]
