@@ -8,7 +8,7 @@
            [org.bouncycastle.crypto.params ECDomainParameters]
            [org.bouncycastle.crypto.digests RIPEMD160Digest]
            [org.bouncycastle.math.ec ECPoint$Fp]
-           [mywallet ByteUtil ExtendedKey ECKey]))
+           [mywallet ByteUtil ExtendedKey ECKey Hash]))
 
 (Security/addProvider (org.bouncycastle.jce.provider.BouncyCastleProvider.))
 
@@ -112,16 +112,22 @@
                             chain-code
                             key-bytes
                             ]
-  (ByteUtil/toBase58WithChecksum 
-    (byte-array 
+  (let [ba (byte-array 
       (concat
         (ser-32 version)
         [(bit-and depth 0xff)]
         parent-fingerprint
         (ser-32 index)
         chain-code
-        (if (private? version) [0] [])
-        key-bytes))))
+        ;(if (private? version) [0] [])
+        key-bytes))]
+    (-> ba vec dbg)
+    (ByteUtil/toBase58WithChecksum 
+      ba)))
+
+
+[4 -120 -83 -28 1 -67 22 -66 -27 0 0 0 0 -16 -112 -102 -1 -86 126 -25 -85 -27 -35 78 16 5 -104 -44 -36 83 -51 112 -99 90 92 44 -84 64 -25 65 47 35 47 124 -100 0 -85 -25 74 -104 -10 -57 -22 -66 -32 66 -113 83 121 -113 10 -72 -86 27 -45 120 115 -103 -112 65 112 60 116 47 21 -84 126 30] 
+[4 -120 -83 -28 1 -67 22 -66 -27 0 0 0 0 -16 -112 -102 -1 -86 126 -25 -85 -27 -35 78 16 5 -104 -44 -36 83 -51 112 -99 90 92 44 -84 64 -25 65 47 35 47 124 -100 0 0 -85 -25 74 -104 -10 -57 -22 -66 -32 66 -113 83 121 -113 10 -72 -86 27 -45 120 115 -103 -112 65 112 60 116 47 21 -84 126 30]
 
 (defn fp-kp-of [kp] 
   (let [fp (->> kp :pub extended-key-hash-of (take 4) byte-array)]
@@ -131,32 +137,8 @@
 
 (defn parse-index [s]
   (if (.endsWith s "H")
-    {:hardened true, :value (Integer/decode (.substring s 0 (dec (count s))))}
-    {:hardened false, :value (Integer/decode s)}))
-
-(defn extended-key-pair-of 
-  ([seed path]
-    (let [root-fp (byte-array [0 0 0 0])
-          mk (derive-master-key-pair (hex-str->ba seed))]
-        (extended-key-pair-of 
-          (ExtendedKey. (:chain mk) 0 0 0 (ECKey. (:prv mk) true)) 0 (.split path "/"))))
-  ([kp depth index path fp]
-    #_(let [net (:mainnet version-map)] 
-       (if (>= depth (dec (count path)))
-         (let [ext-fn (fn [k] (extend-key-format-of (k net) depth fp index (:chain kp) (k kp)))]
-           (kp-map-of ext-fn))
-         (let [depth (inc depth)
-               index (Integer/decode (nth path depth))]
-           (extended-key-pair-of 
-             (derive-child-key-pair kp index) depth index path (fp-kp-of kp))))))
-  ([ek depth path]
-    (if (>= depth (dec (count path)))
-      {:prv (.serializePrivate ek), :pub (.serializePublic ek)}
-      (let [depth (inc depth)
-            index (parse-index (nth path depth))]
-        (extended-key-pair-of (.derive ek (:value index), (:hardened index)) depth path))))
-    
-  )
+    (bit-or (Integer/decode (.substring s 0 (dec (count s)))) hardened-child) 
+    (Integer/decode s)))
 
 
 (defn point-ser [k]
@@ -166,14 +148,44 @@
   (byte-array (concat [0] k (ser-32 i))))
 
 (defn normal-child-concat [k i]
+  #_(byte-array (concat k (ser-32 i)))
   (byte-array (concat (point-ser (BigInteger. 1 k)) (ser-32 i))))
 
 
-(defn CKDpriv [k c i]
-    (split-l-r 
-      (mac-sha-512 
-       (if (>= i hardened-child) 
-         (hardened-child-concat k i)
-         (normal-child-concat k i))
-       c)))
-  
+(defn ckd-priv [k c i]
+    (let [lr (split-l-r 
+               (mac-sha-512 
+                (if (>= i hardened-child) 
+                  (hardened-child-concat k i)
+                  (normal-child-concat k i))
+                c))]
+      {:chain (:r lr), :prv (.toByteArray (.mod (.add (BigInteger. 1 (:l lr)) (BigInteger. 1 k)) (.getN curve)))}))
+
+
+
+(defn extended-key-pair-of 
+  ([seed path]
+    (let [root-fp (byte-array [0 0 0 0])
+          mk (derive-master-key-pair (hex-str->ba seed))]
+        (extended-key-pair-of 
+          (ExtendedKey. (:chain mk) 0 0 0 (ECKey. (:prv mk) true)) 0 (.split path "/")) 
+        #_(extended-key-pair-of  mk 0 0 (.split path "/") root-fp)))
+  ([parent depth index path fp]
+    (let [net (:mainnet version-map)] 
+     (if (>= depth (dec (count path)))
+       (let [ext-fn (fn [k] (extend-key-format-of (k net) depth fp index (:chain parent) (k parent)))]
+         (kp-map-of ext-fn))
+       (let [depth (inc depth)
+             index (parse-index (nth path depth))]
+         (extended-key-pair-of (ckd-priv (:prv parent) (:chain parent) index) depth index path (fp-kp-of parent))))))
+ ([ek depth path]
+    (if (>= depth (dec (count path)))
+      {:prv (.serializePrivate ek), :pub (.serializePublic ek)}
+      (let [depth (inc depth)
+            index (parse-index (nth path depth))]
+        (extended-key-pair-of (.derive ek index) depth path))))
+    
+  )
+
+
+
