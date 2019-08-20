@@ -84,7 +84,7 @@
     (master-key-pair-of lr)))
 
 (defn ser-32 [v]
-  (reverse (map (fn [i] (bit-and (bit-shift-right v (* 8 i)) 0xff)) (range 4))))
+  (reverse (map (fn [i] (ByteUtil/twosComplOf (bit-shift-right v (* 8 i)))) (range 4))))
 
 (defn derive-child-key-pair [parent-key-pair index]
   (let [mac-fn (partial mac-sha-512 (:chain parent-key-pair))
@@ -105,6 +105,9 @@
 
 
 
+(defn root? [fp]
+  (= (vec fp) [0 0 0 0]))
+
 (defn extend-key-format-of [version 
                             depth 
                             parent-fingerprint 
@@ -119,15 +122,11 @@
         parent-fingerprint
         (ser-32 index)
         chain-code
-        ;(if (private? version) [0] [])
+        (if (and (private? version) (root? parent-fingerprint))  [0] [])
         key-bytes))]
-    (-> ba vec dbg)
     (ByteUtil/toBase58WithChecksum 
       ba)))
 
-
-[4 -120 -83 -28 1 -67 22 -66 -27 0 0 0 0 -16 -112 -102 -1 -86 126 -25 -85 -27 -35 78 16 5 -104 -44 -36 83 -51 112 -99 90 92 44 -84 64 -25 65 47 35 47 124 -100 0 -85 -25 74 -104 -10 -57 -22 -66 -32 66 -113 83 121 -113 10 -72 -86 27 -45 120 115 -103 -112 65 112 60 116 47 21 -84 126 30] 
-[4 -120 -83 -28 1 -67 22 -66 -27 0 0 0 0 -16 -112 -102 -1 -86 126 -25 -85 -27 -35 78 16 5 -104 -44 -36 83 -51 112 -99 90 92 44 -84 64 -25 65 47 35 47 124 -100 0 0 -85 -25 74 -104 -10 -57 -22 -66 -32 66 -113 83 121 -113 10 -72 -86 27 -45 120 115 -103 -112 65 112 60 116 47 21 -84 126 30]
 
 (defn fp-kp-of [kp] 
   (let [fp (->> kp :pub extended-key-hash-of (take 4) byte-array)]
@@ -158,8 +157,13 @@
                 (if (>= i hardened-child) 
                   (hardened-child-concat k i)
                   (normal-child-concat k i))
-                c))]
-      {:chain (:r lr), :prv (.toByteArray (.mod (.add (BigInteger. 1 (:l lr)) (BigInteger. 1 k)) (.getN curve)))}))
+                c))
+          prv (.mod (.add (BigInteger. 1 (:l lr)) (BigInteger. 1 k)) (.getN curve))
+          ]
+      {:chain (:r lr), 
+       :prv (.toByteArray prv), 
+       :pub (pub-key-of prv)
+       }))
 
 
 
@@ -167,9 +171,9 @@
   ([seed path]
     (let [root-fp (byte-array [0 0 0 0])
           mk (derive-master-key-pair (hex-str->ba seed))]
-        (extended-key-pair-of 
+        #_(extended-key-pair-of 
           (ExtendedKey. (:chain mk) 0 0 0 (ECKey. (:prv mk) true)) 0 (.split path "/")) 
-        #_(extended-key-pair-of  mk 0 0 (.split path "/") root-fp)))
+        (extended-key-pair-of  mk 0 0 (.split path "/") root-fp)))
   ([parent depth index path fp]
     (let [net (:mainnet version-map)] 
      (if (>= depth (dec (count path)))
@@ -186,6 +190,5 @@
         (extended-key-pair-of (.derive ek index) depth path))))
     
   )
-
 
 
