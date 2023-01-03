@@ -11,7 +11,8 @@
   (let [mnemonics-list (entropy->mnemonic entropy)
         actual-mnemonics (clojure.string/join " " mnemonics-list)]
     (is (= mnemonic actual-mnemonics))
-    (is (= seed (mnemonic->seed actual-mnemonics "TREZOR")))))
+    (is (= seed (mnemonic->seed actual-mnemonics "TREZOR")))
+    (is (= entropy (mnemonic->entropy mnemonics-list)))))
 
 (deftest verify-test-vectors 
   (doseq [tv test-vectors]

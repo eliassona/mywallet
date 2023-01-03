@@ -47,6 +47,20 @@
       (partition-all nr-of-bits-in-group)
       (map (comp (partial nth word-list) #(Integer/parseInt % 2) (partial apply str))))))
 
+
+
+(defn mnemonic->entropy [mnemonic]
+  (let [part-11-bits (map (comp (partial pad-bits 11) 
+                                 #(Integer/toBinaryString %) 
+                                 word->index-map) mnemonic)
+        part-bytes (partition-all 8 (apply str part-11-bits))]
+    (ba->hex-str 
+      (butlast
+        (map (comp
+             #(Integer/parseInt % 2)
+             (partial apply str)) part-bytes)))))
+  
+
 (defn normalize [s] (Normalizer/normalize s, Normalizer$Form/NFKD))
 
 (def iterations 2048)
