@@ -23,3 +23,7 @@
   (is (= (vec (byte-array [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0])) (vec (hex-str->ba "00000000000000000000000000000000"))))
   )
 
+(deftest verify-hex-str-roundtrip
+  (let [ba (byte-array [255 15 3 4])]
+    (is (= (vec ba) (-> ba ba->hex-str hex-str->ba vec)))))
+
